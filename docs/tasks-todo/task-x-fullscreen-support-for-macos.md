@@ -322,10 +322,19 @@ bun run tauri dev
 4. Check that app doesn't crash
 
 **Success Criteria:**
-- [ ] App starts without crashes
-- [ ] Logs show panel creation at startup
-- [ ] Panel created but hidden (not visible)
-- [ ] Recording might not work yet - that's OK for this phase
+- [x] App starts without crashes
+- [x] Logs show panel creation at startup
+- [x] Panel created but hidden (not visible)
+- [x] Recording works (overlay shows and hides correctly)
+
+**COMPLETED - Session 2 (2025-11-19)**
+
+**Known Issue:**
+- Settings window is pushed behind other windows on startup (flashes briefly on top, then goes behind)
+- Simple `.set_focus()` fix did not resolve this
+- **TODO:** Investigate deeper fix after completing all phases
+  - Possible causes: NSPanel creation affecting window ordering, timing issue
+  - May need to delay panel creation or use different approach
 
 **Common Issues:**
 - Compilation error about `CollectionBehavior` methods → Verify using `.new()` builder pattern
@@ -1236,6 +1245,28 @@ if let Ok(panel) = app_handle.get_webview_panel("recording_overlay") {
 - macOS Window Levels: https://developer.apple.com/documentation/appkit/nswindowlevel
 - NSWindow.CollectionBehavior: https://developer.apple.com/documentation/appkit/nswindow/collectionbehavior
 - Stack Overflow - NSPanel above fullscreen: https://stackoverflow.com/questions/36205834/allow-an-nswindow-nspanel-to-float-above-full-screen-apps
+
+## Known Issues to Fix
+
+### Settings Window Focus Issue (Discovered in Phase 4)
+
+**Problem:** Settings window is pushed behind other application windows on startup
+- Window flashes briefly on top (as expected)
+- Then immediately goes behind other windows
+- Overlay functionality works correctly, this is just a focus issue
+
+**Attempted Fix:** Simple `.set_focus()` call after panel creation - did not work
+
+**Possible Solutions to Try:**
+1. Delay panel creation until after main window is fully shown and focused
+2. Create panel in background thread
+3. Use different NSPanel configuration that doesn't affect window ordering
+4. Explicitly set activation policy after panel creation
+5. Check if panel's `is_floating_panel: true` config is causing the issue
+
+**Priority:** Medium - doesn't affect core functionality but impacts UX
+
+---
 
 ## Success Criteria (Final)
 
