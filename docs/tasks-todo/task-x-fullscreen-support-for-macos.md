@@ -25,12 +25,38 @@ Handy shows no visual feedback when transcription is active in macOS fullscreen 
 
 ### 🔧 Next Steps
 
-1. **Visual Styling Polish** (Current Priority)
-   - Ensure macOS overlay looks identical to Windows/Linux
-   - User will provide screenshots for comparison
-   - May need CSS adjustments to match original appearance
+1. **Remove Window Decorations** (Current Priority)
 
-2. **Final Testing & Documentation**
+   **Problem:** NSPanel is showing macOS window controls (red/yellow/green buttons) and title bar
+
+   **Root Cause:** Missing `style_mask` configuration in PanelBuilder - defaults to standard window chrome
+
+   **Solution:** Add one line to remove decorations:
+
+   ```rust
+   // In src-tauri/src/overlay.rs, add to imports:
+   use tauri_nspanel::{tauri_panel, CollectionBehavior, PanelBuilder, PanelLevel, StyleMask};
+
+   // In create_recording_overlay(), add before .build():
+   .style_mask(StyleMask::empty().borderless())
+   ```
+
+   **Why This Works:**
+   - `StyleMask::empty()` - Start with no window features
+   - `.borderless()` - Remove title bar and border completely
+   - No frontend changes needed - HTML/CSS already transparent and pill-shaped
+
+   **Files to Modify:**
+   - `src-tauri/src/overlay.rs` (add import + one method call)
+
+   **Expected Result:** Clean pill-shaped overlay matching Windows/Linux implementation exactly
+
+2. **Visual Verification**
+   - Test that overlay now has no window chrome
+   - Verify pill shape and transparency work correctly
+   - Compare with Windows/Linux screenshots if needed
+
+3. **Final Testing & Documentation**
    - Production build testing
    - Update user-facing documentation
    - Clean up any remaining logging
@@ -213,6 +239,36 @@ The plugin uses **builder pattern methods**, NOT enum constants:
 - ❌ `CollectionBehavior::CAN_JOIN_ALL_SPACES` - Does not exist
 - ✅ `CollectionBehavior::new().can_join_all_spaces()` - Correct
 
+### Overlay Frontend Architecture
+
+The overlay visual appearance is handled entirely by React components and CSS, not Rust:
+
+**Files:**
+- `/src/overlay/index.html` - Sets transparent background and loads React app
+- `/src/overlay/RecordingOverlay.tsx` - React component with state management, audio visualization, and UI logic
+- `/src/overlay/RecordingOverlay.css` - Styling for pill shape, animations, and transparency
+
+**How It Works:**
+1. Rust creates a webview window/panel that loads `src/overlay/index.html`
+2. The HTML sets `background: transparent` and loads the React component
+3. React component renders:
+   - Pill-shaped container with semi-transparent black background (`#000000cc`)
+   - Microphone icon (left)
+   - 9 audio bars that respond to `mic-level` events from Rust (middle)
+   - Cancel button (right, only in recording state)
+   - "Transcribing..." text (shown when state switches)
+4. CSS handles:
+   - Border radius (18px for pill shape)
+   - Fade in/out animations (300ms)
+   - Bar height transitions (smooth audio visualization)
+
+**Communication:**
+- Rust → React events: `show-overlay`, `hide-overlay`, `mic-level`
+- React → Rust commands: `cancel_operation` (when clicking cancel button)
+
+**Why No Frontend Changes Needed:**
+The React/CSS implementation is already platform-agnostic and designed for transparency. The NSPanel just needs to be configured to be borderless so the React content can show through without window chrome.
+
 ### Panel Levels
 
 ```rust
@@ -221,6 +277,23 @@ PanelLevel::Status          // Level 25 (recommended, what we use)
 PanelLevel::ModalPanel      // Level 8 (between floating and status)
 PanelLevel::ScreenSaver     // Level 1000 (highest, overkill for our needs)
 ```
+
+### StyleMask Options
+
+Controls which window features appear (title bar, buttons, borders):
+
+```rust
+StyleMask::empty()           // Start with no window features
+    .borderless()            // Remove title bar and border (what we use)
+    .titled()                // Add title bar
+    .closable()              // Add close button
+    .miniaturizable()        // Add minimize button
+    .resizable()             // Enable resizing
+    .full_size_content_view() // Extend content into title area
+```
+
+**For Recording Overlay:**
+We use `StyleMask::empty().borderless()` to create a completely chrome-free window that matches the Windows/Linux appearance.
 
 ### Collection Behaviors
 
@@ -248,6 +321,13 @@ CollectionBehavior::new()
 - Identified audio initialization hang as separate issue
 - Settings window focus bug fixed as side effect
 
+**Session 4 (2025-11-19):**
+- Investigated window decorations issue (red/yellow/green buttons showing)
+- Researched NSPanel API and StyleMask options
+- Identified missing `.style_mask()` configuration as root cause
+- Documented overlay frontend architecture
+- Created simple fix: add `StyleMask::empty().borderless()` to PanelBuilder
+
 ### Key Lessons Learned
 
 1. **Trust the Library Design:** If implementation requires extensive workarounds, you're probably doing it wrong. The simple solution (only platform-conditional creation) is the correct one.
@@ -257,6 +337,8 @@ CollectionBehavior::new()
 3. **Logging is Critical:** Comprehensive logging with clear prefixes (`[OVERLAY]`, `[ACTION]`) made debugging race conditions possible. Without logs showing function entry without completion, the deadlock would have been much harder to identify.
 
 4. **Builder Patterns vs Enums:** Always check library documentation for API patterns. tauri-nspanel uses builder methods, not enum constants.
+
+5. **Check All Available API Options:** When something doesn't look right (window decorations appearing), check the builder API for configuration options. The `style_mask()` method was available all along but not being used, causing default window chrome to appear.
 
 ### Files Modified
 
