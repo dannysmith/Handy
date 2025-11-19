@@ -144,6 +144,8 @@ pub fn create_recording_overlay(app_handle: &AppHandle) {
 #[cfg(target_os = "macos")]
 pub fn create_recording_overlay(app_handle: &AppHandle) {
     if let Some((x, y)) = calculate_overlay_position(app_handle) {
+        // PanelBuilder creates a Tauri window then converts it to NSPanel.
+        // The window remains registered, so get_webview_window() still works.
         match PanelBuilder::<_, RecordingOverlayPanel>::new(
             app_handle,
             "recording_overlay"
