@@ -1,8 +1,10 @@
 use crate::settings;
 use crate::settings::OverlayPosition;
 use enigo::{Enigo, Mouse};
-use log::debug;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize};
+
+#[cfg(not(target_os = "macos"))]
+use log::debug;
 
 #[cfg(not(target_os = "macos"))]
 use tauri::WebviewWindowBuilder;
