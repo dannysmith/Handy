@@ -189,13 +189,12 @@ pub fn show_recording_overlay(app_handle: &AppHandle) {
     }
 
     if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
-        let _ = overlay_window.show();
-
-        // Update position after showing to avoid race condition
+        // Update position before showing to prevent flicker from position changes
         if let Some((x, y)) = calculate_overlay_position(app_handle) {
             let _ = overlay_window.set_position(tauri::Position::Logical(tauri::LogicalPosition { x, y }));
         }
 
+        let _ = overlay_window.show();
         let _ = overlay_window.emit("show-overlay", "recording");
     }
 }
