@@ -121,12 +121,14 @@ Only `create_recording_overlay()` needs to be platform-conditional. All other fu
 - ✅ Rapid toggle hang (partial): Thread spawning in `hide_recording_overlay()` → Removed thread, hide immediately
 
 **Remaining Issues:**
-- ⚠️ **CRITICAL: Rapid toggle still hangs app** (Session 3 - needs investigation)
-  - Improved by removing thread spawning, but still hangs on very rapid toggling
-  - May be dev mode issue vs production
-  - Hypothesis: Could be related to panel recreation vs original implementation keeping window persistent
-  - Next step: Add comprehensive logging to identify root cause (NOT random fixes)
-  - Need to compare: original window approach (persistent + hidden) vs current panel approach (recreate each time?)
+- ✅ **FIXED: Rapid toggle hang** (Session 3)
+  - **Root Cause**: Race condition in `show_recording_overlay()`
+  - When rapidly toggling, `hide()` was called, then immediately `show()` + `update_overlay_position()`
+  - `update_overlay_position()` tried to access window while it was mid-hide operation, causing deadlock
+  - Logs showed `update_overlay_position()` starting but never completing its internal operations
+  - **Fix**: Inlined position update logic directly in `show_recording_overlay()` AFTER `show()` call
+  - This ensures window is fully shown before attempting to reposition it
+  - Eliminates race condition between hide and position update operations
 
 **Lesson:** Trust the library's design. If something requires extensive workarounds, you're probably doing it wrong.
 
@@ -1254,6 +1256,32 @@ if let Ok(panel) = app_handle.get_webview_panel("recording_overlay") {
 **Solution:** Verify `window.close()` is called in destroy thread
 **Debugging:** Add extensive logging around hide/destroy
 
+### Issue: App Hangs on Rapid Toggle (Session 3)
+**Cause:** Race condition between `hide()` and `update_overlay_position()`
+**Symptom:** When rapidly toggling overlay on/off, app hangs (beach ball). Logs show `update_overlay_position()` called but never completing.
+**Root Cause:**
+- `hide()` called on window
+- Immediately after, `show()` + `update_overlay_position()` called
+- `update_overlay_position()` tries to get window and reposition it while it's mid-hide
+- This creates a deadlock - window is in inconsistent state
+**Solution:** Inline position update directly in `show_recording_overlay()` AFTER `show()` call
+**Code:**
+```rust
+pub fn show_recording_overlay(app_handle: &AppHandle) {
+    if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
+        let _ = overlay_window.show();
+
+        // Update position AFTER showing to avoid race condition with hide()
+        if let Some((x, y)) = calculate_overlay_position(app_handle) {
+            let _ = overlay_window.set_position(tauri::Position::Logical(tauri::LogicalPosition { x, y }));
+        }
+
+        let _ = overlay_window.emit("show-overlay", "recording");
+    }
+}
+```
+**Prevention:** Don't call separate position update function that accesses window - inline the logic to ensure proper sequencing
+
 ## Performance Notes
 
 - Panel creation: ~50ms (measured in Session 1)
@@ -1295,6 +1323,26 @@ if let Ok(panel) = app_handle.get_webview_panel("recording_overlay") {
 - Test in fullscreen Safari/Chrome, not just dev mode
 - Test space switching extensively - most crash-prone scenario
 - Use `[OVERLAY]` prefix consistently for easy log filtering
+- **Race Conditions**: If a function's logs show it starting but never completing internal steps, suspect deadlock from concurrent window operations
+
+## Lessons Learned (Session 3)
+
+### Race Conditions in Window Operations
+1. **Window State Transitions**: Window operations like `hide()` and `show()` may not be atomic
+   - Don't assume window is immediately ready after `hide()` or `show()` call
+   - Accessing window properties during state transition can cause deadlocks
+
+2. **Function Sequencing**: When calling multiple operations on same window, inline them instead of separate function calls
+   - Wrong: `show_window()` then `update_position()` (two separate window accesses)
+   - Right: `show_window()` { show, then update position inline } (single coordinated access)
+
+3. **Rapid Toggling Detection**: Look for logs showing function entry but no internal completion logs
+   - Example: Function logs "starting" but never logs "position updated" or "operation completed"
+   - This indicates the function blocked/deadlocked on a window operation
+
+4. **Dev Mode vs Production**: Race conditions may be more apparent in dev mode due to debug overhead
+   - But don't assume it's "just dev mode" - fix the race condition properly
+   - The fix should work in both environments
 
 ## References
 

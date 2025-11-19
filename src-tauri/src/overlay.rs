@@ -196,14 +196,22 @@ pub fn show_recording_overlay(app_handle: &AppHandle) {
         return;
     }
 
-    info!("[OVERLAY] Updating overlay position");
-    update_overlay_position(app_handle);
-
     info!("[OVERLAY] Attempting to get webview window");
     if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
         info!("[OVERLAY] Found overlay window, calling show()");
         let _ = overlay_window.show();
-        info!("[OVERLAY] Show() completed, emitting show-overlay event");
+
+        info!("[OVERLAY] Show() completed, updating position");
+        // Update position AFTER showing to avoid race condition with hide()
+        if let Some((x, y)) = calculate_overlay_position(app_handle) {
+            debug!("[OVERLAY] Calculated position: x={}, y={}", x, y);
+            let _ = overlay_window.set_position(tauri::Position::Logical(tauri::LogicalPosition { x, y }));
+            debug!("[OVERLAY] Position updated successfully");
+        } else {
+            log::warn!("[OVERLAY] Could not calculate position");
+        }
+
+        info!("[OVERLAY] Position updated, emitting show-overlay event");
         // Emit event to trigger fade-in animation with recording state
         let _ = overlay_window.emit("show-overlay", "recording");
         info!("[OVERLAY] show_recording_overlay() completed successfully");
