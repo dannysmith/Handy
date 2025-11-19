@@ -10,7 +10,7 @@ use async_openai::types::{
     ChatCompletionRequestMessage, ChatCompletionRequestUserMessageArgs,
     CreateChatCompletionRequestArgs,
 };
-use log::{debug, error};
+use log::{debug, error, info};
 use once_cell::sync::Lazy;
 use ferrous_opencc::{OpenCC, config::BuiltinConfig};
 use std::collections::HashMap;
@@ -205,6 +205,7 @@ async fn maybe_convert_chinese_variant(
 impl ShortcutAction for TranscribeAction {
     fn start(&self, app: &AppHandle, binding_id: &str, _shortcut_str: &str) {
         let start_time = Instant::now();
+        info!("[ACTION] TranscribeAction::start called for binding: {}", binding_id);
         debug!("TranscribeAction::start called for binding: {}", binding_id);
 
         // Load model in the background
@@ -267,6 +268,7 @@ impl ShortcutAction for TranscribeAction {
 
     fn stop(&self, app: &AppHandle, binding_id: &str, _shortcut_str: &str) {
         let stop_time = Instant::now();
+        info!("[ACTION] TranscribeAction::stop called for binding: {}", binding_id);
         debug!("TranscribeAction::stop called for binding: {}", binding_id);
 
         let ah = app.clone();
