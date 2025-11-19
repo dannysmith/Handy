@@ -185,6 +185,7 @@ pub fn create_recording_overlay(app_handle: &AppHandle) {
 
 /// Shows the recording overlay window with fade-in animation
 pub fn show_recording_overlay(app_handle: &AppHandle) {
+    // Check if overlay should be shown based on position setting
     let settings = settings::get_settings(app_handle);
     if settings.overlay_position == OverlayPosition::None {
         return;
@@ -197,6 +198,7 @@ pub fn show_recording_overlay(app_handle: &AppHandle) {
         }
 
         let _ = overlay_window.show();
+        // Emit event to trigger fade-in animation with recording state
         let _ = overlay_window.emit("show-overlay", "recording");
     }
 }
@@ -230,10 +232,11 @@ pub fn update_overlay_position(app_handle: &AppHandle) {
 
 /// Hides the recording overlay window with fade-out animation
 pub fn hide_recording_overlay(app_handle: &AppHandle) {
+    // Always hide the overlay regardless of settings - if setting was changed while recording,
+    // we still want to hide it properly
     if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
         // Emit event to trigger fade-out animation
         let _ = overlay_window.emit("hide-overlay", ());
-
         // Hide the window after a short delay to allow animation to complete
         let window_clone = overlay_window.clone();
         std::thread::spawn(move || {
