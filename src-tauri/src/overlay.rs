@@ -2,7 +2,10 @@ use crate::settings;
 use crate::settings::OverlayPosition;
 use enigo::{Enigo, Mouse};
 use log::debug;
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize};
+
+#[cfg(not(target_os = "macos"))]
+use tauri::WebviewWindowBuilder;
 
 // NEW: Add macOS-specific imports
 #[cfg(target_os = "macos")]
@@ -164,6 +167,7 @@ pub fn create_recording_overlay(app_handle: &AppHandle) {
         .transparent(true)
         .no_activate(true)  // Don't steal focus when shown
         .corner_radius(0.0)  // Remove rounded corners from NSPanel window
+        .with_window(|w| w.decorations(false))  // Remove title bar and window controls BEFORE NSPanel conversion
         .collection_behavior(
             CollectionBehavior::new()
                 .can_join_all_spaces()      // Appears in all Mission Control spaces
