@@ -12,7 +12,7 @@ use log::info;  // Add info! for panel logging
 use tauri::WebviewUrl;
 
 #[cfg(target_os = "macos")]
-use tauri_nspanel::{tauri_panel, CollectionBehavior, ManagerExt, PanelBuilder, PanelLevel};
+use tauri_nspanel::{tauri_panel, CollectionBehavior, PanelBuilder, PanelLevel};
 
 // NEW: Define panel type
 #[cfg(target_os = "macos")]
@@ -163,6 +163,7 @@ pub fn create_recording_overlay(app_handle: &AppHandle) {
         .has_shadow(false)
         .transparent(true)
         .no_activate(true)  // Don't steal focus when shown
+        .corner_radius(0.0)  // Remove rounded corners from NSPanel window
         .collection_behavior(
             CollectionBehavior::new()
                 .can_join_all_spaces()      // Appears in all Mission Control spaces
@@ -233,14 +234,11 @@ pub fn hide_recording_overlay(app_handle: &AppHandle) {
     // Always hide the overlay regardless of settings - if setting was changed while recording,
     // we still want to hide it properly
     if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
-        // Emit event to trigger fade-out animation
+        // Emit event to trigger fade-out animation (CSS handles the visual transition)
         let _ = overlay_window.emit("hide-overlay", ());
-        // Hide the window after a short delay to allow animation to complete
-        let window_clone = overlay_window.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(300));
-            let _ = window_clone.hide();
-        });
+        // Hide the window immediately - the CSS fade-out animation will complete visually
+        // before the window is actually hidden since the window is transparent
+        let _ = overlay_window.hide();
     }
 }
 

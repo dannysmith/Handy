@@ -88,6 +88,50 @@ error!("[OVERLAY] get_webview_panel failed: {}", e);
 - Use `warn!` for unexpected but handled conditions (recreation)
 - Use `error!` for actual failures
 
+## CRITICAL INSIGHT (Session 3 - 2025-11-19)
+
+**The original phased plan (Phases 5-9) was INCORRECT.**
+
+### What Actually Works
+
+Only `create_recording_overlay()` needs to be platform-conditional. All other functions (`show_recording_overlay`, `hide_recording_overlay`, `show_transcribing_overlay`, `update_overlay_position`, `emit_levels`) work with both panels and windows via the standard `get_webview_window()` API.
+
+**Why This Works:**
+- tauri-nspanel registers panels in Tauri's window manager
+- Panels are accessible via `get_webview_window()` just like regular windows
+- No need to rewrite all overlay functions with platform-conditional logic
+- No need to use `get_webview_panel()` or `.to_window()` conversions in show/hide functions
+
+**What Was Attempted (and Failed):**
+- Rewrote all overlay functions to be platform-conditional
+- Used `get_webview_panel()` and `.to_window()` everywhere
+- Added panel recreation/destruction logic
+- Result: App crashed after first use, even after multiple fix attempts
+- Root cause: Overcomplicating the solution and fighting against the library's design
+
+**Current Working Implementation (git commit 1c12c5e):**
+- ✅ `create_recording_overlay()` is platform-conditional (creates NSPanel on macOS, NSWindow elsewhere)
+- ✅ All other functions remain platform-agnostic using `get_webview_window()`
+- ✅ Works in fullscreen mode
+- ✅ Works across Mission Control spaces
+- ✅ Shows and hides correctly
+
+**Fixed Issues (Session 3):**
+- ✅ Visual styling: Panel had rounded corners from NSPanel window → Added `.corner_radius(0.0)` in PanelBuilder
+- ✅ Rapid toggle hang (partial): Thread spawning in `hide_recording_overlay()` → Removed thread, hide immediately
+
+**Remaining Issues:**
+- ⚠️ **CRITICAL: Rapid toggle still hangs app** (Session 3 - needs investigation)
+  - Improved by removing thread spawning, but still hangs on very rapid toggling
+  - May be dev mode issue vs production
+  - Hypothesis: Could be related to panel recreation vs original implementation keeping window persistent
+  - Next step: Add comprehensive logging to identify root cause (NOT random fixes)
+  - Need to compare: original window approach (persistent + hidden) vs current panel approach (recreate each time?)
+
+**Lesson:** Trust the library's design. If something requires extensive workarounds, you're probably doing it wrong.
+
+---
+
 ## Phased Implementation Plan
 
 ### Phase 1: Add Dependency (Zero Code Changes)
@@ -348,7 +392,21 @@ git checkout src-tauri/src/overlay.rs
 
 ---
 
-### Phase 5: Show Panel on macOS (Make Recording Work)
+### Phase 5-9: OBSOLETE - DO NOT IMPLEMENT
+
+**These phases are NO LONGER NEEDED.**
+
+The original plan incorrectly assumed all overlay functions needed platform-conditional rewrites. In reality:
+- Only `create_recording_overlay()` (Phase 4) needs to be platform-conditional
+- Phases 5-9 attempted to rewrite `show_recording_overlay()`, `hide_recording_overlay()`, `show_transcribing_overlay()`, `update_overlay_position()`, and `emit_levels()` with platform-specific logic
+- This caused crashes and instability
+- The standard `get_webview_window()` API works for both panels and windows
+
+**If you're reading this:** Skip directly from Phase 4 to Phase 10 (Fullscreen Testing).
+
+---
+
+### ~~Phase 5: Show Panel on macOS (Make Recording Work)~~ [OBSOLETE]
 
 **Goal:** Show panel properly with recreation fallback when recording starts
 
@@ -446,11 +504,13 @@ bun run tauri dev
 ```
 
 **Success Criteria:**
-- [ ] Panel appears when recording starts
-- [ ] Panel is pill-shaped, transparent, no window chrome
-- [ ] Panel shows recording animation (audio bars)
-- [ ] Panel positioned correctly (center bottom or top)
-- [ ] Panel appears consistently across multiple record attempts
+- [x] Panel appears when recording starts
+- [x] Panel is pill-shaped, transparent, no window chrome
+- [x] Panel shows recording animation (audio bars)
+- [x] Panel positioned correctly (center bottom or top)
+- [x] Panel appears consistently across multiple record attempts
+
+**COMPLETED - Session 2 (2025-11-19)**
 
 **Common Issues:**
 - Panel has window chrome → Panels are borderless by default, check no extra styling
