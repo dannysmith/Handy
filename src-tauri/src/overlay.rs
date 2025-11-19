@@ -7,17 +7,12 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize};
 #[cfg(not(target_os = "macos"))]
 use tauri::WebviewWindowBuilder;
 
-// NEW: Add macOS-specific imports
-#[cfg(target_os = "macos")]
-use log::info;  // Add info! for panel logging
-
 #[cfg(target_os = "macos")]
 use tauri::WebviewUrl;
 
 #[cfg(target_os = "macos")]
 use tauri_nspanel::{tauri_panel, CollectionBehavior, PanelBuilder, PanelLevel};
 
-// NEW: Define panel type
 #[cfg(target_os = "macos")]
 tauri_panel! {
     panel!(RecordingOverlayPanel {
@@ -108,7 +103,7 @@ fn calculate_overlay_position(app_handle: &AppHandle) -> Option<(f64, f64)> {
 }
 
 /// Creates the recording overlay window and keeps it hidden by default
-#[cfg(not(target_os = "macos"))]  // NEW: Only for Windows/Linux
+#[cfg(not(target_os = "macos"))]
 pub fn create_recording_overlay(app_handle: &AppHandle) {
     if let Some((x, y)) = calculate_overlay_position(app_handle) {
         match WebviewWindowBuilder::new(
@@ -143,14 +138,10 @@ pub fn create_recording_overlay(app_handle: &AppHandle) {
     }
 }
 
-/// Creates the recording overlay panel (macOS only) and keeps it hidden by default
+/// Creates the recording overlay panel and keeps it hidden by default (macOS)
 #[cfg(target_os = "macos")]
 pub fn create_recording_overlay(app_handle: &AppHandle) {
-    info!("[OVERLAY] Creating recording overlay panel (macOS)");
-
     if let Some((x, y)) = calculate_overlay_position(app_handle) {
-        info!("[OVERLAY] Panel position calculated: x={}, y={}", x, y);
-
         match PanelBuilder::<_, RecordingOverlayPanel>::new(
             app_handle,
             "recording_overlay"
@@ -158,72 +149,52 @@ pub fn create_recording_overlay(app_handle: &AppHandle) {
         .url(WebviewUrl::App("src/overlay/index.html".into()))
         .title("Recording")
         .position(tauri::Position::Logical(tauri::LogicalPosition { x, y }))
-        .level(PanelLevel::Status)  // Level 25 - appears above most windows
+        .level(PanelLevel::Status)
         .size(tauri::Size::Logical(tauri::LogicalSize {
             width: OVERLAY_WIDTH,
             height: OVERLAY_HEIGHT
         }))
         .has_shadow(false)
         .transparent(true)
-        .no_activate(true)  // Don't steal focus when shown
-        .corner_radius(0.0)  // Remove rounded corners from NSPanel window
+        .no_activate(true)
+        .corner_radius(0.0)
         .with_window(|w| {
-            w.decorations(false)  // Remove title bar and window controls BEFORE NSPanel conversion
-                .transparent(true)  // Enable webview transparency (requires macOSPrivateApi)
+            w.decorations(false)
+                .transparent(true)
         })
         .collection_behavior(
             CollectionBehavior::new()
-                .can_join_all_spaces()      // Appears in all Mission Control spaces
-                .full_screen_auxiliary()     // Works alongside fullscreen apps
+                .can_join_all_spaces()
+                .full_screen_auxiliary()
         )
         .build()
         {
             Ok(panel) => {
-                // Panel starts visible by default, explicitly hide it
                 let _ = panel.hide();
-                info!("[OVERLAY] Panel created successfully and hidden");
             }
             Err(e) => {
-                log::error!("[OVERLAY] Failed to create panel: {}", e);
+                log::error!("Failed to create recording overlay panel: {}", e);
             }
         }
-    } else {
-        log::warn!("[OVERLAY] Could not calculate overlay position");
     }
 }
 
 /// Shows the recording overlay window with fade-in animation
 pub fn show_recording_overlay(app_handle: &AppHandle) {
-    info!("[OVERLAY] show_recording_overlay() called");
-
-    // Check if overlay should be shown based on position setting
     let settings = settings::get_settings(app_handle);
     if settings.overlay_position == OverlayPosition::None {
-        info!("[OVERLAY] Overlay position is None, not showing");
         return;
     }
 
-    info!("[OVERLAY] Attempting to get webview window");
     if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
-        info!("[OVERLAY] Found overlay window, calling show()");
         let _ = overlay_window.show();
 
-        info!("[OVERLAY] Show() completed, updating position");
-        // Update position AFTER showing to avoid race condition with hide()
+        // Update position after showing to avoid race condition
         if let Some((x, y)) = calculate_overlay_position(app_handle) {
-            debug!("[OVERLAY] Calculated position: x={}, y={}", x, y);
             let _ = overlay_window.set_position(tauri::Position::Logical(tauri::LogicalPosition { x, y }));
-            debug!("[OVERLAY] Position updated successfully");
-        } else {
-            log::warn!("[OVERLAY] Could not calculate position");
         }
 
-        info!("[OVERLAY] Position updated, emitting show-overlay event");
-        // Emit event to trigger fade-in animation with recording state
         let _ = overlay_window.emit("show-overlay", "recording");
-        info!("[OVERLAY] show_recording_overlay() completed successfully");
-    } else {
-        log::warn!("[OVERLAY] Could not find overlay window!");
     }
 }
 
@@ -246,40 +217,19 @@ pub fn show_transcribing_overlay(app_handle: &AppHandle) {
 
 /// Updates the overlay window position based on current settings
 pub fn update_overlay_position(app_handle: &AppHandle) {
-    debug!("[OVERLAY] update_overlay_position() called");
     if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
-        debug!("[OVERLAY] Found overlay window for position update");
         if let Some((x, y)) = calculate_overlay_position(app_handle) {
-            debug!("[OVERLAY] Calculated position: x={}, y={}", x, y);
             let _ = overlay_window
                 .set_position(tauri::Position::Logical(tauri::LogicalPosition { x, y }));
-            debug!("[OVERLAY] Position updated successfully");
-        } else {
-            log::warn!("[OVERLAY] Could not calculate position");
         }
-    } else {
-        log::warn!("[OVERLAY] Could not find overlay window for position update");
     }
 }
 
 /// Hides the recording overlay window with fade-out animation
 pub fn hide_recording_overlay(app_handle: &AppHandle) {
-    info!("[OVERLAY] hide_recording_overlay() called");
-
-    // Always hide the overlay regardless of settings - if setting was changed while recording,
-    // we still want to hide it properly
-    info!("[OVERLAY] Attempting to get webview window for hiding");
     if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
-        info!("[OVERLAY] Found overlay window, emitting hide-overlay event");
-        // Emit event to trigger fade-out animation (CSS handles the visual transition)
         let _ = overlay_window.emit("hide-overlay", ());
-        info!("[OVERLAY] Hide event emitted, calling hide()");
-        // Hide the window immediately - the CSS fade-out animation will complete visually
-        // before the window is actually hidden since the window is transparent
         let _ = overlay_window.hide();
-        info!("[OVERLAY] hide_recording_overlay() completed successfully");
-    } else {
-        log::warn!("[OVERLAY] Could not find overlay window to hide!");
     }
 }
 

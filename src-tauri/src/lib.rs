@@ -18,8 +18,6 @@ use managers::audio::AudioRecordingManager;
 use managers::history::HistoryManager;
 use managers::model::ModelManager;
 use managers::transcription::TranscriptionManager;
-#[cfg(target_os = "macos")]
-use log::info;
 #[cfg(unix)]
 use signal_hook::consts::SIGUSR2;
 #[cfg(unix)]
@@ -240,7 +238,6 @@ pub fn run() {
 
     #[cfg(target_os = "macos")]
     {
-        info!("[OVERLAY] Initializing tauri-nspanel plugin");
         builder = builder.plugin(tauri_nspanel::init());
     }
 
