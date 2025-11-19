@@ -4,6 +4,27 @@ use enigo::{Enigo, Mouse};
 use log::debug;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindowBuilder};
 
+// NEW: Add macOS-specific imports
+#[cfg(target_os = "macos")]
+use log::info;  // Add info! for panel logging
+
+#[cfg(target_os = "macos")]
+use tauri::WebviewUrl;
+
+#[cfg(target_os = "macos")]
+use tauri_nspanel::{tauri_panel, CollectionBehavior, ManagerExt, PanelBuilder, PanelLevel};
+
+// NEW: Define panel type
+#[cfg(target_os = "macos")]
+tauri_panel! {
+    panel!(RecordingOverlayPanel {
+        config: {
+            can_become_key_window: false,
+            is_floating_panel: true
+        }
+    })
+}
+
 const OVERLAY_WIDTH: f64 = 172.0;
 const OVERLAY_HEIGHT: f64 = 36.0;
 
