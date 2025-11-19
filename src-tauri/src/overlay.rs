@@ -105,6 +105,7 @@ fn calculate_overlay_position(app_handle: &AppHandle) -> Option<(f64, f64)> {
 }
 
 /// Creates the recording overlay window and keeps it hidden by default
+#[cfg(not(target_os = "macos"))]  // NEW: Only for Windows/Linux
 pub fn create_recording_overlay(app_handle: &AppHandle) {
     if let Some((x, y)) = calculate_overlay_position(app_handle) {
         match WebviewWindowBuilder::new(
@@ -136,6 +137,50 @@ pub fn create_recording_overlay(app_handle: &AppHandle) {
                 debug!("Failed to create recording overlay window: {}", e);
             }
         }
+    }
+}
+
+/// Creates the recording overlay panel (macOS only) and keeps it hidden by default
+#[cfg(target_os = "macos")]
+pub fn create_recording_overlay(app_handle: &AppHandle) {
+    info!("[OVERLAY] Creating recording overlay panel (macOS)");
+
+    if let Some((x, y)) = calculate_overlay_position(app_handle) {
+        info!("[OVERLAY] Panel position calculated: x={}, y={}", x, y);
+
+        match PanelBuilder::<_, RecordingOverlayPanel>::new(
+            app_handle,
+            "recording_overlay"
+        )
+        .url(WebviewUrl::App("src/overlay/index.html".into()))
+        .title("Recording")
+        .position(tauri::Position::Logical(tauri::LogicalPosition { x, y }))
+        .level(PanelLevel::Status)  // Level 25 - appears above most windows
+        .size(tauri::Size::Logical(tauri::LogicalSize {
+            width: OVERLAY_WIDTH,
+            height: OVERLAY_HEIGHT
+        }))
+        .has_shadow(false)
+        .transparent(true)
+        .no_activate(true)  // Don't steal focus when shown
+        .collection_behavior(
+            CollectionBehavior::new()
+                .can_join_all_spaces()      // Appears in all Mission Control spaces
+                .full_screen_auxiliary()     // Works alongside fullscreen apps
+        )
+        .build()
+        {
+            Ok(panel) => {
+                // Panel starts visible by default, explicitly hide it
+                let _ = panel.hide();
+                info!("[OVERLAY] Panel created successfully and hidden");
+            }
+            Err(e) => {
+                log::error!("[OVERLAY] Failed to create panel: {}", e);
+            }
+        }
+    } else {
+        log::warn!("[OVERLAY] Could not calculate overlay position");
     }
 }
 
