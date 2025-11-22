@@ -17,6 +17,11 @@ interface HandyShortcutProps {
   grouped?: boolean;
 }
 
+// Check if current binding is the fn key (macOS only)
+const isFnBinding = (binding: string): boolean => {
+  return binding.toLowerCase() === "fn";
+};
+
 export const HandyShortcut: React.FC<HandyShortcutProps> = ({
   descriptionMode = "tooltip",
   grouped = false,
@@ -285,6 +290,27 @@ export const HandyShortcut: React.FC<HandyShortcutProps> = ({
           );
         }
 
+        const isMacOS = osType === "macos";
+        const currentIsFn = isFnBinding(primaryBinding.current_binding);
+
+        // Handler to set fn key binding (macOS only)
+        const setFnBinding = async () => {
+          if (editingShortcutId === primaryId) {
+            // Cancel current recording first
+            setEditingShortcutId(null);
+            setKeyPressed([]);
+            setRecordedKeys([]);
+            setOriginalBinding("");
+          }
+          try {
+            await updateBinding(primaryId, "fn");
+            toast.success("Shortcut set to fn key");
+          } catch (error) {
+            console.error("Failed to set fn binding:", error);
+            toast.error(`Failed to set fn key shortcut: ${error}`);
+          }
+        };
+
         return (
           <div className="flex items-center space-x-1">
             {editingShortcutId === primaryId ? (
@@ -298,9 +324,25 @@ export const HandyShortcut: React.FC<HandyShortcutProps> = ({
               <div
                 className="px-2 py-1 text-sm font-semibold bg-mid-gray/10 border border-mid-gray/80 hover:bg-logo-primary/10 rounded cursor-pointer hover:border-logo-primary"
                 onClick={() => startRecording(primaryId)}
+                title={
+                  currentIsFn
+                    ? "Using fn/Globe key (click to change)"
+                    : "Click to record new shortcut"
+                }
               >
-                {formatKeyCombination(primaryBinding.current_binding, osType)}
+                {currentIsFn
+                  ? "fn (Globe)"
+                  : formatKeyCombination(primaryBinding.current_binding, osType)}
               </div>
+            )}
+            {isMacOS && !currentIsFn && editingShortcutId !== primaryId && (
+              <button
+                onClick={setFnBinding}
+                className="px-2 py-1 text-xs font-medium text-mid-gray hover:text-logo-primary hover:bg-logo-primary/10 rounded border border-transparent hover:border-logo-primary/50 transition-colors"
+                title="Use the fn/Globe key as shortcut (recommended for macOS)"
+              >
+                Use fn
+              </button>
             )}
             <ResetButton
               onClick={() => resetBinding(primaryId)}
