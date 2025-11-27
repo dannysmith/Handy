@@ -12,6 +12,7 @@ This document captures how to correctly implement these two features, based on a
 **DO NOT TOUCH THE EXISTING SHORTCUT UI (`HandyShortcut.tsx`)**
 
 The existing UI has a complex interaction pattern between:
+
 - `suspend_binding` (unregisters shortcut while user records new keys)
 - `updateBinding` → `change_binding` (saves and registers new shortcut)
 - `resume_binding` (re-registers shortcut)
@@ -46,6 +47,7 @@ The fn/Globe key is a modifier key that generates `NSEventType::FlagsChanged` ev
    - Add special case to allow "fn" as valid on macOS
 
 4. **Dependencies (macOS only in Cargo.toml)**:
+
    ```toml
    [target.'cfg(target_os = "macos")'.dependencies]
    objc2 = "0.6"
@@ -108,6 +110,7 @@ This is a **dynamic shortcut** - only registered while recording is active.
 ### Implementation approach
 
 1. **Add `CancelAction` to `src-tauri/src/actions.rs`**:
+
    ```rust
    struct CancelAction;
 
@@ -132,6 +135,7 @@ This is a **dynamic shortcut** - only registered while recording is active.
    ```
 
 2. **Add cancel binding to settings defaults** (`settings.rs`):
+
    ```rust
    ShortcutBinding {
        id: "cancel".to_string(),
@@ -145,12 +149,14 @@ This is a **dynamic shortcut** - only registered while recording is active.
    ```
 
 3. **Add dynamic binding functions** (`shortcut/mod.rs`):
+
    ```rust
    pub fn register_dynamic_binding(app: &AppHandle, binding_id: &str) -> Result<(), String>
    pub fn unregister_dynamic_binding(app: &AppHandle, binding_id: &str) -> Result<(), String>
    ```
 
 4. **Modify `init_shortcuts()`** to skip dynamic bindings:
+
    ```rust
    for (id, binding) in settings.bindings {
        if binding.dynamic {
@@ -161,6 +167,7 @@ This is a **dynamic shortcut** - only registered while recording is active.
    ```
 
 5. **Register cancel when recording starts** (`actions.rs` in `start_transcription_recording`):
+
    ```rust
    crate::shortcut::register_dynamic_binding(app, "cancel");
    ```
@@ -179,19 +186,25 @@ The cancel shortcut is entirely backend. The UI doesn't need to show it or allow
 ## What NOT to do (lessons from failed attempt)
 
 ### 1. Don't rewrite the shortcut UI
+
 The existing `HandyShortcut.tsx` has bugs but works. Leave it alone except for adding the "Use fn" button.
 
 ### 2. Don't try to "fix" suspend/resume
+
 The suspend → change_binding → resume flow has a double-registration issue (change_binding registers, then resume tries to register again). The `.catch(console.error)` swallows the error. It's ugly but functional. Don't touch it.
 
 ### 3. Don't add multiple bindings UI
+
 The plan called for showing transcribe, transcribe_llm, cancel in the UI. This is scope creep. Start with just fn key support for the existing transcribe binding.
 
 ### 4. Don't change change_binding behavior
+
 I modified `change_binding` to handle empty bindings differently. This had cascading effects. The original behavior should be preserved.
 
 ### 5. Test incrementally
+
 I made changes to:
+
 - shortcut/mod.rs
 - shortcut/fn_monitor.rs (new)
 - actions.rs
@@ -199,6 +212,7 @@ I made changes to:
 - HandyShortcut.tsx
 
 All at once. Should have:
+
 1. Added fn_monitor.rs and tested fn key works
 2. Then added CancelAction and tested escape works
 3. Then (maybe) touched the UI

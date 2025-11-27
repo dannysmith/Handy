@@ -85,17 +85,15 @@ export const HandyShortcut: React.FC<HandyShortcutProps> = ({
         if (editingShortcutId && originalBinding) {
           try {
             await updateBinding(editingShortcutId, originalBinding);
-            await commands.resumeBinding(editingShortcutId).catch(
-              console.error,
-            );
+            await commands
+              .resumeBinding(editingShortcutId)
+              .catch(console.error);
           } catch (error) {
             console.error("Failed to restore original binding:", error);
             toast.error("Failed to restore original shortcut");
           }
         } else if (editingShortcutId) {
-          await commands.resumeBinding(editingShortcutId).catch(
-            console.error,
-          );
+          await commands.resumeBinding(editingShortcutId).catch(console.error);
         }
         setEditingShortcutId(null);
         setKeyPressed([]);
@@ -139,9 +137,9 @@ export const HandyShortcut: React.FC<HandyShortcutProps> = ({
           try {
             await updateBinding(editingShortcutId, newShortcut);
             // Re-register the shortcut now that recording is finished
-            await commands.resumeBinding(editingShortcutId).catch(
-              console.error,
-            );
+            await commands
+              .resumeBinding(editingShortcutId)
+              .catch(console.error);
           } catch (error) {
             console.error("Failed to change binding:", error);
             toast.error(`Failed to set shortcut: ${error}`);
@@ -150,9 +148,9 @@ export const HandyShortcut: React.FC<HandyShortcutProps> = ({
             if (originalBinding) {
               try {
                 await updateBinding(editingShortcutId, originalBinding);
-                await commands.resumeBinding(editingShortcutId).catch(
-                  console.error,
-                );
+                await commands
+                  .resumeBinding(editingShortcutId)
+                  .catch(console.error);
               } catch (resetError) {
                 console.error("Failed to reset binding:", resetError);
                 toast.error("Failed to reset shortcut to original value");
@@ -178,17 +176,15 @@ export const HandyShortcut: React.FC<HandyShortcutProps> = ({
         if (editingShortcutId && originalBinding) {
           try {
             await updateBinding(editingShortcutId, originalBinding);
-            await commands.resumeBinding(editingShortcutId).catch(
-              console.error,
-            );
+            await commands
+              .resumeBinding(editingShortcutId)
+              .catch(console.error);
           } catch (error) {
             console.error("Failed to restore original binding:", error);
             toast.error("Failed to restore original shortcut");
           }
         } else if (editingShortcutId) {
-          commands.resumeBinding(editingShortcutId).catch(
-            console.error,
-          );
+          commands.resumeBinding(editingShortcutId).catch(console.error);
         }
         setEditingShortcutId(null);
         setKeyPressed([]);
@@ -332,7 +328,10 @@ export const HandyShortcut: React.FC<HandyShortcutProps> = ({
               >
                 {currentIsFn
                   ? "fn (Globe)"
-                  : formatKeyCombination(primaryBinding.current_binding, osType)}
+                  : formatKeyCombination(
+                      primaryBinding.current_binding,
+                      osType,
+                    )}
               </div>
             )}
             {isMacOS && !currentIsFn && editingShortcutId !== primaryId && (
