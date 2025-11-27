@@ -107,7 +107,58 @@ app.run_on_main_thread(move || {
 
 This is a **dynamic shortcut** - only registered while recording is active.
 
+### Bug fix: `cancel_current_operation()` doesn't actually cancel
+
+**Existing bug:** The `cancel_current_operation()` function in `utils.rs` (used by both the tray menu "Cancel" item and the `cancel_operation` Tauri command) has a bug where it calls `action.stop()` before `cancel_recording()`. This means:
+
+1. User clicks "Cancel" in tray menu
+2. `cancel_current_operation()` calls `TranscribeAction.stop()`
+3. `stop()` calls `rm.stop_recording()` which returns the audio samples
+4. **Transcription happens anyway** ❌
+5. Then `cancel_recording()` is called (too late, samples already extracted)
+
+**The fix:** Reorder operations in `cancel_current_operation()`:
+
+1. Call `cancel_recording()` **first** - discards audio, sets state to Idle
+2. Reset toggle states **without** calling `action.stop()` - we want to discard, not complete
+3. Add `hide_recording_overlay()` and `remove_mute()` for complete cleanup
+
+This fixes the existing cancel functionality for tray menu and frontend callers, and enables the new Escape shortcut to work correctly.
+
 ### Implementation approach
+
+0. **Fix `cancel_current_operation()` in `src-tauri/src/utils.rs`**:
+
+   ```rust
+   pub fn cancel_current_operation(app: &AppHandle) {
+       info!("Initiating operation cancellation...");
+
+       // FIRST: Cancel any ongoing recording (BEFORE touching toggle states!)
+       // This ensures audio is discarded and state is set to Idle
+       let audio_manager = app.state::<Arc<AudioRecordingManager>>();
+       audio_manager.cancel_recording();
+
+       // Remove any applied mute
+       audio_manager.remove_mute();
+
+       // Reset toggle states WITHOUT calling action.stop()
+       // (action.stop() would try to transcribe, which we don't want when cancelling)
+       let toggle_state_manager = app.state::<ManagedToggleState>();
+       if let Ok(mut states) = toggle_state_manager.lock() {
+           for (_, is_active) in states.active_toggles.iter_mut() {
+               *is_active = false;
+           }
+       }
+
+       // Hide the recording overlay
+       hide_recording_overlay(app);
+
+       // Update tray icon to idle state
+       change_tray_icon(app, crate::tray::TrayIconState::Idle);
+
+       info!("Operation cancellation completed - returned to idle state");
+   }
+   ```
 
 1. **Add `CancelAction` to `src-tauri/src/actions.rs`**:
 
@@ -115,10 +166,9 @@ This is a **dynamic shortcut** - only registered while recording is active.
    struct CancelAction;
 
    impl ShortcutAction for CancelAction {
-       fn start(&self, app: &AppHandle, binding_id: &str, _shortcut_str: &str) {
-           // Cancel the recording
+       fn start(&self, app: &AppHandle, _binding_id: &str, _shortcut_str: &str) {
+           // Cancel the recording (handles overlay, mute, tray icon, toggle states)
            utils::cancel_current_operation(app);
-           utils::hide_recording_overlay(app);
 
            // Unregister ourselves (defer to avoid deadlock)
            let app_clone = app.clone();
@@ -144,7 +194,6 @@ This is a **dynamic shortcut** - only registered while recording is active.
        default_binding: "Escape".to_string(),
        current_binding: "Escape".to_string(),
        dynamic: true,  // KEY: only registered when needed
-       enabled: true,
    }
    ```
 
