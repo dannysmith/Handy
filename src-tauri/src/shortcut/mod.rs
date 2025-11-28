@@ -22,20 +22,16 @@ fn is_fn_binding(binding: &str) -> bool {
 
 /// Register a binding, routing to the appropriate handler based on binding type
 fn register_binding(app: &AppHandle, binding: ShortcutBinding) -> Result<(), String> {
-    log::info!(
-        "register_binding: id='{}', current_binding='{}', is_fn={}",
-        binding.id,
-        binding.current_binding,
-        is_fn_binding(&binding.current_binding)
+    debug!(
+        "register_binding: id='{}', current_binding='{}'",
+        binding.id, binding.current_binding
     );
 
     #[cfg(target_os = "macos")]
     if is_fn_binding(&binding.current_binding) {
-        log::info!("register_binding: routing to fn_monitor for '{}'", binding.id);
         return fn_monitor::register_fn_binding(app, binding);
     }
 
-    log::info!("register_binding: routing to _register_shortcut for '{}'", binding.id);
     _register_shortcut(app, binding)
 }
 
@@ -81,11 +77,9 @@ pub fn register_dynamic_binding(app: &AppHandle, binding_id: &str) -> Result<(),
         .get(binding_id)
         .ok_or_else(|| format!("Dynamic binding '{}' not found in settings", binding_id))?;
 
-    log::info!(
-        "register_dynamic_binding: id='{}', current_binding='{}', dynamic={}",
-        binding.id,
-        binding.current_binding,
-        binding.dynamic
+    debug!(
+        "register_dynamic_binding: id='{}', binding='{}'",
+        binding.id, binding.current_binding
     );
 
     if !binding.dynamic {
@@ -800,7 +794,7 @@ pub(crate) fn dispatch_binding_event(
     shortcut_string: &str,
     state: ShortcutState,
 ) {
-    log::info!(
+    debug!(
         "dispatch_binding_event: binding_id='{}', shortcut='{}', state={:?}",
         binding_id, shortcut_string, state
     );
@@ -817,53 +811,31 @@ pub(crate) fn dispatch_binding_event(
         } else {
             // Toggle mode: toggle on press only
             if state == ShortcutState::Pressed {
-                log::info!(
-                    "Toggle mode: handling Pressed for binding '{}'",
-                    binding_id
-                );
-
                 // Determine action and update state while holding the lock,
                 // but RELEASE the lock before calling the action to avoid deadlocks.
                 // (Actions may need to acquire the lock themselves, e.g., cancel_current_operation)
                 let should_start: bool;
                 {
                     let toggle_state_manager = app.state::<ManagedToggleState>();
-                    log::info!("Toggle mode: acquiring lock for '{}'", binding_id);
                     let mut states = toggle_state_manager
                         .lock()
                         .expect("Failed to lock toggle state manager");
-                    log::info!("Toggle mode: lock acquired for '{}'", binding_id);
 
                     let is_currently_active = states
                         .active_toggles
                         .entry(binding_id.to_string())
                         .or_insert(false);
 
-                    log::info!(
-                        "Toggle mode: binding '{}' current state = {}",
-                        binding_id, *is_currently_active
-                    );
-
                     should_start = !*is_currently_active;
-                    *is_currently_active = should_start; // Toggle the state
-                    log::info!("Toggle mode: releasing lock for '{}'", binding_id);
+                    *is_currently_active = should_start;
                 } // Lock released here
 
                 // Now call the action without holding the lock
                 if should_start {
-                    log::info!("Toggle mode: calling start() for '{}'", binding_id);
                     action.start(app, binding_id, shortcut_string);
-                    log::info!("Toggle mode: start() completed for '{}'", binding_id);
                 } else {
-                    log::info!("Toggle mode: calling stop() for '{}'", binding_id);
                     action.stop(app, binding_id, shortcut_string);
-                    log::info!("Toggle mode: stop() completed for '{}'", binding_id);
                 }
-            } else {
-                log::info!(
-                    "Toggle mode: ignoring {:?} for binding '{}'",
-                    state, binding_id
-                );
             }
         }
     } else {
@@ -875,17 +847,8 @@ pub(crate) fn dispatch_binding_event(
 }
 
 fn _register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), String> {
-    log::info!(
-        "_register_shortcut called: id='{}', binding='{}'",
-        binding.id, binding.current_binding
-    );
-
     // Validate human-level rules first
     if let Err(e) = validate_shortcut_string(&binding.current_binding) {
-        warn!(
-            "_register_shortcut validation error for binding '{}': {}",
-            binding.current_binding, e
-        );
         return Err(e);
     }
 
@@ -893,55 +856,41 @@ fn _register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), S
     let shortcut = match binding.current_binding.parse::<Shortcut>() {
         Ok(s) => s,
         Err(e) => {
-            let error_msg = format!(
+            return Err(format!(
                 "Failed to parse shortcut '{}': {}",
                 binding.current_binding, e
-            );
-            error!("_register_shortcut parse error: {}", error_msg);
-            return Err(error_msg);
+            ));
         }
     };
 
     // Prevent duplicate registrations that would silently shadow one another
     if app.global_shortcut().is_registered(shortcut) {
-        let error_msg = format!("Shortcut '{}' is already in use", binding.current_binding);
-        warn!("_register_shortcut duplicate error: {}", error_msg);
-        return Err(error_msg);
+        return Err(format!(
+            "Shortcut '{}' is already in use",
+            binding.current_binding
+        ));
     }
 
     // Clone binding info for use in the closure
     let binding_id = binding.id.clone();
     let shortcut_string = binding.current_binding.clone();
-    let binding_id_for_log = binding.id.clone();
-    let shortcut_string_for_log = binding.current_binding.clone();
-
-    log::info!(
-        "_register_shortcut: about to call on_shortcut for id='{}', shortcut='{}'",
-        binding_id_for_log, shortcut_string_for_log
-    );
 
     app.global_shortcut()
         .on_shortcut(shortcut, move |ah, scut, event| {
-            log::info!(
-                "_register_shortcut callback fired: binding_id='{}', shortcut='{}', event_state={:?}",
-                binding_id, shortcut_string, event.state
-            );
             if scut == &shortcut {
                 dispatch_binding_event(ah, &binding_id, &shortcut_string, event.state);
             }
         })
         .map_err(|e| {
-            let error_msg = format!(
+            format!(
                 "Couldn't register shortcut '{}': {}",
                 binding.current_binding, e
-            );
-            error!("_register_shortcut registration error: {}", error_msg);
-            error_msg
+            )
         })?;
 
-    log::info!(
-        "_register_shortcut: shortcut '{}' registered successfully for binding '{}'",
-        shortcut_string_for_log, binding_id_for_log
+    debug!(
+        "Shortcut '{}' registered for binding '{}'",
+        binding.current_binding, binding.id
     );
     Ok(())
 }
@@ -950,22 +899,18 @@ fn _unregister_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(),
     let shortcut = match binding.current_binding.parse::<Shortcut>() {
         Ok(s) => s,
         Err(e) => {
-            let error_msg = format!(
+            return Err(format!(
                 "Failed to parse shortcut '{}' for unregistration: {}",
                 binding.current_binding, e
-            );
-            error!("_unregister_shortcut parse error: {}", error_msg);
-            return Err(error_msg);
+            ));
         }
     };
 
     app.global_shortcut().unregister(shortcut).map_err(|e| {
-        let error_msg = format!(
+        format!(
             "Failed to unregister shortcut '{}': {}",
             binding.current_binding, e
-        );
-        error!("_unregister_shortcut error: {}", error_msg);
-        error_msg
+        )
     })?;
 
     Ok(())

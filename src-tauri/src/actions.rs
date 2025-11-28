@@ -262,15 +262,12 @@ impl ShortcutAction for TranscribeAction {
             }
         }
 
-        // TEST: Enable registration only - no unregistration anywhere
-        log::info!("Queuing cancel registration via run_on_main_thread");
+        // Register the cancel shortcut (Escape) so user can cancel mid-recording
         let app_clone = app.clone();
         let _ = app.run_on_main_thread(move || {
-            log::info!("run_on_main_thread closure executing for cancel registration");
             if let Err(e) = crate::shortcut::register_dynamic_binding(&app_clone, "cancel") {
-                log::info!("Failed to register cancel binding: {}", e);
+                debug!("Failed to register cancel binding: {}", e);
             }
-            log::info!("cancel registration complete");
         });
 
         debug!(
@@ -429,11 +426,8 @@ impl ShortcutAction for TranscribeAction {
 struct CancelAction;
 
 impl ShortcutAction for CancelAction {
-    fn start(&self, app: &AppHandle, binding_id: &str, shortcut_str: &str) {
-        log::info!(
-            "CancelAction::start - binding_id='{}', shortcut_str='{}' - cancelling current operation",
-            binding_id, shortcut_str
-        );
+    fn start(&self, app: &AppHandle, binding_id: &str, _shortcut_str: &str) {
+        debug!("CancelAction::start called for binding: {}", binding_id);
 
         // Cancel the recording (handles overlay, mute, tray icon, toggle states)
         utils::cancel_current_operation(app);
