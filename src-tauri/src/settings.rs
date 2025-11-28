@@ -80,6 +80,11 @@ pub struct ShortcutBinding {
     pub description: String,
     pub default_binding: String,
     pub current_binding: String,
+    /// If true, this binding is registered/unregistered dynamically at runtime
+    /// (e.g., cancel shortcut only active during recording). Dynamic bindings
+    /// are not registered at startup and not shown in the UI for editing.
+    #[serde(default)]
+    pub dynamic: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
@@ -430,6 +435,18 @@ pub fn get_default_settings() -> AppSettings {
             description: "Converts your speech into text.".to_string(),
             default_binding: default_shortcut.to_string(),
             current_binding: default_shortcut.to_string(),
+            dynamic: false,
+        },
+    );
+    bindings.insert(
+        "cancel".to_string(),
+        ShortcutBinding {
+            id: "cancel".to_string(),
+            name: "Cancel".to_string(),
+            description: "Cancel recording without transcribing.".to_string(),
+            default_binding: "Escape".to_string(),
+            current_binding: "Escape".to_string(),
+            dynamic: true, // Only registered while recording is active
         },
     );
 

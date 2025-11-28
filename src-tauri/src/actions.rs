@@ -262,6 +262,17 @@ impl ShortcutAction for TranscribeAction {
             }
         }
 
+        // TEST: Enable registration only - no unregistration anywhere
+        log::info!("Queuing cancel registration via run_on_main_thread");
+        let app_clone = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            log::info!("run_on_main_thread closure executing for cancel registration");
+            if let Err(e) = crate::shortcut::register_dynamic_binding(&app_clone, "cancel") {
+                log::info!("Failed to register cancel binding: {}", e);
+            }
+            log::info!("cancel registration complete");
+        });
+
         debug!(
             "TranscribeAction::start completed in {:?}",
             start_time.elapsed()
@@ -271,6 +282,14 @@ impl ShortcutAction for TranscribeAction {
     fn stop(&self, app: &AppHandle, binding_id: &str, _shortcut_str: &str) {
         let stop_time = Instant::now();
         debug!("TranscribeAction::stop called for binding: {}", binding_id);
+
+        // Unregister cancel shortcut when transcription completes
+        let app_clone = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            if let Err(e) = crate::shortcut::unregister_dynamic_binding(&app_clone, "cancel") {
+                debug!("Failed to unregister cancel binding: {}", e);
+            }
+        });
 
         let ah = app.clone();
         let rm = Arc::clone(&app.state::<Arc<AudioRecordingManager>>());
@@ -406,6 +425,33 @@ impl ShortcutAction for TranscribeAction {
     }
 }
 
+// Cancel Action - cancels recording without transcribing
+struct CancelAction;
+
+impl ShortcutAction for CancelAction {
+    fn start(&self, app: &AppHandle, binding_id: &str, shortcut_str: &str) {
+        log::info!(
+            "CancelAction::start - binding_id='{}', shortcut_str='{}' - cancelling current operation",
+            binding_id, shortcut_str
+        );
+
+        // Cancel the recording (handles overlay, mute, tray icon, toggle states)
+        utils::cancel_current_operation(app);
+
+        // NOTE: We intentionally do NOT unregister the cancel shortcut here.
+        // Unregistering from inside the shortcut's own callback causes a deadlock
+        // because global_shortcut holds internal locks during callback execution.
+        //
+        // Instead, register_dynamic_binding is idempotent - it unregisters first
+        // before registering. So the next TranscribeAction::start will clean up
+        // any stale registration automatically.
+    }
+
+    fn stop(&self, _app: &AppHandle, _binding_id: &str, _shortcut_str: &str) {
+        // Instant action - no stop behavior needed
+    }
+}
+
 // Test Action
 struct TestAction;
 
@@ -435,6 +481,10 @@ pub static ACTION_MAP: Lazy<HashMap<String, Arc<dyn ShortcutAction>>> = Lazy::ne
     map.insert(
         "transcribe".to_string(),
         Arc::new(TranscribeAction) as Arc<dyn ShortcutAction>,
+    );
+    map.insert(
+        "cancel".to_string(),
+        Arc::new(CancelAction) as Arc<dyn ShortcutAction>,
     );
     map.insert(
         "test".to_string(),

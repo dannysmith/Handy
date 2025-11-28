@@ -51,9 +51,7 @@ pub fn check_accessibility_permission(prompt: bool) -> bool {
             let keys: &[&NSString] = &[&key];
             let values: &[&NSNumber] = &[&value];
             let options = NSDictionary::from_slices(keys, values);
-            AXIsProcessTrustedWithOptions(
-                Retained::as_ptr(&options) as *const std::ffi::c_void,
-            )
+            AXIsProcessTrustedWithOptions(Retained::as_ptr(&options) as *const std::ffi::c_void)
         } else {
             AXIsProcessTrustedWithOptions(std::ptr::null())
         }
