@@ -739,10 +739,12 @@ pub fn change_mute_while_recording_setting(app: AppHandle, enabled: bool) -> Res
 /// modifier-only combos (e.g. "ctrl" or "ctrl+shift").
 /// Special case: "fn" is allowed as a macOS-specific modifier-only binding.
 fn validate_shortcut_string(raw: &str) -> Result<(), String> {
-    // Allow "fn" as a special macOS-only binding
-    #[cfg(target_os = "macos")]
+    // "fn" is only valid on macOS
     if is_fn_binding(raw) {
+        #[cfg(target_os = "macos")]
         return Ok(());
+        #[cfg(not(target_os = "macos"))]
+        return Err("The fn key shortcut is only supported on macOS".into());
     }
 
     let modifiers = [
