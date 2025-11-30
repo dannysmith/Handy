@@ -42,21 +42,29 @@ fn unregister_binding(app: &AppHandle, binding: ShortcutBinding) -> Result<(), S
         return fn_monitor::unregister_fn_binding(app, &binding.id);
     }
 
-    _unregister_shortcut(app, binding)
+    unregister_shortcut(app, binding)
 }
 
 pub fn init_shortcuts(app: &AppHandle) {
-    let settings = settings::load_or_create_app_settings(app);
+    let default_bindings = settings::get_default_settings().bindings;
+    let user_settings = settings::load_or_create_app_settings(app);
 
-    // Register shortcuts with the bindings from settings
+    // Register all default shortcuts, applying user customizations
     // Skip dynamic bindings - they are registered at runtime when needed
-    for (_id, binding) in settings.bindings {
+    for (id, default_binding) in default_bindings {
+        let binding = user_settings
+            .bindings
+            .get(&id)
+            .cloned()
+            .unwrap_or(default_binding);
+
         if binding.dynamic {
-            debug!("Skipping dynamic binding '{}' during init", _id);
+            debug!("Skipping dynamic binding '{}' during init", id);
             continue;
         }
+
         if let Err(e) = register_binding(app, binding) {
-            error!("Failed to register shortcut {} during init: {}", _id, e);
+            error!("Failed to register shortcut {} during init: {}", id, e);
         }
     }
 }
@@ -69,41 +77,71 @@ pub fn init_shortcuts(app: &AppHandle) {
 /// before registering. This allows safe re-registration without needing to
 /// explicitly unregister first (which can deadlock if called from inside a
 /// shortcut callback).
+///
+/// Note: Dynamic shortcut registration is disabled on Linux due to instability
+/// with the global shortcut plugin. See PR #392.
 pub fn register_dynamic_binding(app: &AppHandle, binding_id: &str) -> Result<(), String> {
-    let settings = get_settings(app);
-
-    let binding = settings
-        .bindings
-        .get(binding_id)
-        .ok_or_else(|| format!("Dynamic binding '{}' not found in settings", binding_id))?;
-
-    debug!(
-        "register_dynamic_binding: id='{}', binding='{}'",
-        binding.id, binding.current_binding
-    );
-
-    if !binding.dynamic {
-        return Err(format!("Binding '{}' is not marked as dynamic", binding_id));
+    // Dynamic shortcut registration is disabled on Linux due to instability
+    #[cfg(target_os = "linux")]
+    {
+        let _ = (app, binding_id);
+        debug!(
+            "Skipping dynamic binding registration on Linux (disabled for stability): {}",
+            binding_id
+        );
+        return Ok(());
     }
 
-    // Try to unregister first (ignore errors - might not be registered)
-    // This makes registration idempotent and avoids "already in use" errors
-    let _ = unregister_binding(app, binding.clone());
+    #[cfg(not(target_os = "linux"))]
+    {
+        let settings = get_settings(app);
 
-    register_binding(app, binding.clone())
+        let binding = settings
+            .bindings
+            .get(binding_id)
+            .ok_or_else(|| format!("Dynamic binding '{}' not found in settings", binding_id))?;
+
+        debug!(
+            "register_dynamic_binding: id='{}', binding='{}'",
+            binding.id, binding.current_binding
+        );
+
+        if !binding.dynamic {
+            return Err(format!("Binding '{}' is not marked as dynamic", binding_id));
+        }
+
+        // Try to unregister first (ignore errors - might not be registered)
+        // This makes registration idempotent and avoids "already in use" errors
+        let _ = unregister_binding(app, binding.clone());
+
+        register_binding(app, binding.clone())
+    }
 }
 
 /// Unregister a dynamic binding at runtime.
+///
+/// Note: Dynamic shortcut registration is disabled on Linux due to instability.
+/// See PR #392.
 pub fn unregister_dynamic_binding(app: &AppHandle, binding_id: &str) -> Result<(), String> {
-    let settings = get_settings(app);
+    // Dynamic shortcut registration is disabled on Linux due to instability
+    #[cfg(target_os = "linux")]
+    {
+        let _ = (app, binding_id);
+        return Ok(());
+    }
 
-    let binding = settings
-        .bindings
-        .get(binding_id)
-        .ok_or_else(|| format!("Dynamic binding '{}' not found in settings", binding_id))?;
+    #[cfg(not(target_os = "linux"))]
+    {
+        let settings = get_settings(app);
 
-    debug!("Unregistering dynamic binding: {}", binding_id);
-    unregister_binding(app, binding.clone())
+        let binding = settings
+            .bindings
+            .get(binding_id)
+            .ok_or_else(|| format!("Dynamic binding '{}' not found in settings", binding_id))?;
+
+        debug!("Unregistering dynamic binding: {}", binding_id);
+        unregister_binding(app, binding.clone())
+    }
 }
 
 #[derive(Serialize, Type)]
@@ -135,6 +173,20 @@ pub fn change_binding(
             });
         }
     };
+    // If this is the cancel binding, just update the settings and return
+    // It's managed dynamically, so we don't register/unregister here
+    if id == "cancel" {
+        if let Some(mut b) = settings.bindings.get(&id).cloned() {
+            b.current_binding = binding;
+            settings.bindings.insert(id.clone(), b.clone());
+            settings::write_settings(&app, settings);
+            return Ok(BindingResponse {
+                success: true,
+                binding: Some(b.clone()),
+                error: None,
+            });
+        }
+    }
 
     // Unregister the existing binding (ignore errors - it may not be registered)
     if let Err(e) = unregister_binding(&app, binding_to_modify.clone()) {
@@ -335,6 +387,24 @@ pub fn change_autostart_setting(app: AppHandle, enabled: bool) -> Result<(), Str
         "settings-changed",
         serde_json::json!({
             "setting": "autostart_enabled",
+            "value": enabled
+        }),
+    );
+
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_update_checks_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.update_checks_enabled = enabled;
+    settings::write_settings(&app, settings);
+
+    let _ = app.emit(
+        "settings-changed",
+        serde_json::json!({
+            "setting": "update_checks_enabled",
             "value": enabled
         }),
     );
@@ -897,7 +967,7 @@ fn _register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), S
     Ok(())
 }
 
-fn _unregister_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), String> {
+pub fn unregister_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), String> {
     let shortcut = match binding.current_binding.parse::<Shortcut>() {
         Ok(s) => s,
         Err(e) => {

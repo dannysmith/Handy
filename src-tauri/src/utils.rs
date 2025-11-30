@@ -33,9 +33,7 @@ pub fn cancel_current_operation(app: &AppHandle) {
     // transcription - we want to discard, not complete.
     let toggle_state_manager = app.state::<ManagedToggleState>();
     if let Ok(mut states) = toggle_state_manager.lock() {
-        for (_binding_id, is_active) in states.active_toggles.iter_mut() {
-            *is_active = false;
-        }
+        states.active_toggles.values_mut().for_each(|v| *v = false);
     } else {
         warn!("Failed to lock toggle state manager during cancellation");
     }
@@ -43,8 +41,10 @@ pub fn cancel_current_operation(app: &AppHandle) {
     // Hide the recording/transcribing overlay
     hide_recording_overlay(app);
 
-    // Update tray icon and menu to idle state
+    // Update tray icon to idle state
     change_tray_icon(app, TrayIconState::Idle);
+
+    info!("Operation cancellation completed - returned to idle state");
 }
 
 /// Check if using the Wayland display server protocol

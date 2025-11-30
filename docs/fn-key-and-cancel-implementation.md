@@ -118,3 +118,20 @@ src-tauri/src/
 
 - [PR #136](https://github.com/cjpais/Handy/pull/136) - Original fn key implementation (tekacs)
 - [PR #224](https://github.com/cjpais/Handy/pull/224) - Cancel shortcut approach (jacksongoode)
+- [PR #392](https://github.com/cjpais/Handy/pull/392) - Disable cancel on Linux (stability fix)
+
+---
+
+## Linux Notes
+
+Dynamic shortcut registration (used for the cancel shortcut) is **disabled on Linux** due to
+instability with the `tauri-plugin-global-shortcut` plugin. See PR #392.
+
+This means the Escape-to-cancel feature is not available on Linux. The cancel shortcut will
+silently be a no-op.
+
+**Potential future improvement:** The `dynamic` binding architecture in this branch provides
+a cleaner foundation than the original async-spawn approach. If the underlying Linux shortcut
+issues are resolved upstream, enabling dynamic bindings on Linux would only require removing
+the `#[cfg(target_os = "linux")]` guards in `register_dynamic_binding()` and
+`unregister_dynamic_binding()` in `shortcut/mod.rs`.

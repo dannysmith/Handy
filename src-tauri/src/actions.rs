@@ -2,10 +2,9 @@ use crate::audio_feedback::{play_feedback_sound, play_feedback_sound_blocking, S
 use crate::managers::audio::AudioRecordingManager;
 use crate::managers::history::HistoryManager;
 use crate::managers::transcription::TranscriptionManager;
-use crate::overlay::{show_recording_overlay, show_transcribing_overlay};
 use crate::settings::{get_settings, AppSettings};
 use crate::tray::{change_tray_icon, TrayIconState};
-use crate::utils;
+use crate::utils::{self, show_recording_overlay, show_transcribing_overlay};
 use async_openai::types::{
     ChatCompletionRequestMessage, ChatCompletionRequestUserMessageArgs,
     CreateChatCompletionRequestArgs,
@@ -225,6 +224,7 @@ impl ShortcutAction for TranscribeAction {
         let is_always_on = settings.always_on_microphone;
         debug!("Microphone mode - always_on: {}", is_always_on);
 
+        let mut recording_started = false;
         if is_always_on {
             // Always-on mode: Play audio feedback immediately, then apply mute after sound finishes
             debug!("Always-on mode: Playing audio feedback immediately");
@@ -237,7 +237,7 @@ impl ShortcutAction for TranscribeAction {
                 rm_clone.apply_mute();
             });
 
-            let recording_started = rm.try_start_recording(&binding_id);
+            recording_started = rm.try_start_recording(&binding_id);
             debug!("Recording started: {}", recording_started);
         } else {
             // On-demand mode: Start recording first, then play audio feedback, then apply mute
@@ -245,6 +245,7 @@ impl ShortcutAction for TranscribeAction {
             debug!("On-demand mode: Starting recording first, then audio feedback");
             let recording_start_time = Instant::now();
             if rm.try_start_recording(&binding_id) {
+                recording_started = true;
                 debug!("Recording started in {:?}", recording_start_time.elapsed());
                 // Small delay to ensure microphone stream is active
                 let app_clone = app.clone();
@@ -262,13 +263,15 @@ impl ShortcutAction for TranscribeAction {
             }
         }
 
-        // Register the cancel shortcut (Escape) so user can cancel mid-recording
-        let app_clone = app.clone();
-        let _ = app.run_on_main_thread(move || {
-            if let Err(e) = crate::shortcut::register_dynamic_binding(&app_clone, "cancel") {
-                debug!("Failed to register cancel binding: {}", e);
-            }
-        });
+        if recording_started {
+            // Register the cancel shortcut (Escape) so user can cancel mid-recording
+            let app_clone = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                if let Err(e) = crate::shortcut::register_dynamic_binding(&app_clone, "cancel") {
+                    debug!("Failed to register cancel binding: {}", e);
+                }
+            });
+        }
 
         debug!(
             "TranscribeAction::start completed in {:?}",

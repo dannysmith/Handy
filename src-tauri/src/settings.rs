@@ -238,6 +238,8 @@ pub struct AppSettings {
     pub start_hidden: bool,
     #[serde(default = "default_autostart_enabled")]
     pub autostart_enabled: bool,
+    #[serde(default = "default_update_checks_enabled")]
+    pub update_checks_enabled: bool,
     #[serde(default = "default_model")]
     pub selected_model: String,
     #[serde(default = "default_always_on_microphone")]
@@ -308,6 +310,10 @@ fn default_start_hidden() -> bool {
 
 fn default_autostart_enabled() -> bool {
     false
+}
+
+fn default_update_checks_enabled() -> bool {
+    true
 }
 
 fn default_selected_language() -> String {
@@ -458,6 +464,7 @@ pub fn get_default_settings() -> AppSettings {
         sound_theme: default_sound_theme(),
         start_hidden: default_start_hidden(),
         autostart_enabled: default_autostart_enabled(),
+        update_checks_enabled: default_update_checks_enabled(),
         selected_model: "".to_string(),
         always_on_microphone: false,
         selected_microphone: None,
@@ -465,7 +472,7 @@ pub fn get_default_settings() -> AppSettings {
         selected_output_device: None,
         translate_to_english: false,
         selected_language: "auto".to_string(),
-        overlay_position: OverlayPosition::Bottom,
+        overlay_position: default_overlay_position(),
         debug_mode: false,
         log_level: default_log_level(),
         custom_words: Vec::new(),
@@ -518,8 +525,25 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
     let settings = if let Some(settings_value) = store.get("settings") {
         // Parse the entire settings object
         match serde_json::from_value::<AppSettings>(settings_value) {
-            Ok(settings) => {
+            Ok(mut settings) => {
                 debug!("Found existing settings: {:?}", settings);
+                let default_settings = get_default_settings();
+                let mut updated = false;
+
+                // Merge default bindings into existing settings
+                for (key, value) in default_settings.bindings {
+                    if !settings.bindings.contains_key(&key) {
+                        debug!("Adding missing binding: {}", key);
+                        settings.bindings.insert(key, value);
+                        updated = true;
+                    }
+                }
+
+                if updated {
+                    debug!("Settings updated with new bindings");
+                    store.set("settings", serde_json::to_value(&settings).unwrap());
+                }
+
                 settings
             }
             Err(e) => {
