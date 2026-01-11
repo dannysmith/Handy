@@ -672,6 +672,10 @@ pub fn change_app_language_setting(app: AppHandle, language: String) -> Result<(
 /// modifier-only combos (e.g. "ctrl" or "ctrl+shift").
 /// Special case: "fn" is allowed as a macOS-specific modifier-only binding.
 fn validate_shortcut_string(raw: &str) -> Result<(), String> {
+    if raw.trim().is_empty() {
+        return Err("Shortcut cannot be empty".into());
+    }
+
     // "fn" is only valid on macOS
     if is_fn_binding(raw) {
         #[cfg(target_os = "macos")]
@@ -687,10 +691,11 @@ fn validate_shortcut_string(raw: &str) -> Result<(), String> {
     let has_non_modifier = raw
         .split('+')
         .any(|part| !modifiers.contains(&part.trim().to_lowercase().as_str()));
+
     if has_non_modifier {
         Ok(())
     } else {
-        Err("Shortcut must contain at least one non-modifier key".into())
+        Err("Shortcut must include a main key (letter, number, F-key, etc.) in addition to modifiers".into())
     }
 }
 
